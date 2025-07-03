@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 4D Gaussian Splatting for Real-Time Dynamic Scene Rendering
 
 ## CVPR 2024
@@ -321,7 +320,3 @@ Some insights about neural voxel grids and dynamic scenes reconstruction origina
   booktitle = {SIGGRAPH Asia 2022 Conference Papers}
 }
 ```
-=======
-# ML3D_4DGaussian_Improvement
-ML3D 25SS Project, about 4D Gaussian and its improvements
->>>>>>> Initial commit
