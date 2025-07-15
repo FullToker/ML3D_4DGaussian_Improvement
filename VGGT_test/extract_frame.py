@@ -46,7 +46,7 @@ def collect_first_frames(source_folder, output_folder):
 # 使用示例
 if __name__ == "__main__":
     # 修改这两个路径
-    source_folder = "./ml3d/zju_mocap_dataset"
+    source_folder = "./zju_mocap_dataset"
     output_folder = "./collected_frames"
     
     collect_first_frames(source_folder, output_folder)
