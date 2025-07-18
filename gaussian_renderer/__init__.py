@@ -79,14 +79,9 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     deformation_point = pc._deformation_table
     if "coarse" in stage:
         means3D_final, scales_final, rotations_final, opacity_final, shs_final = means3D, scales, rotations, opacity, shs
+        dx = torch.zeros_like(means3D)  # coarse阶段没有deformation
     elif "fine" in stage:
-        # time0 = get_time()
-        # means3D_deform, scales_deform, rotations_deform, opacity_deform = pc._deformation(means3D[deformation_point], scales[deformation_point], 
-        #                                                                  rotations[deformation_point], opacity[deformation_point],
-        #                                                                  time[deformation_point])
-        means3D_final, scales_final, rotations_final, opacity_final, shs_final = pc._deformation(means3D, scales, 
-                                                                 rotations, opacity, shs,
-                                                                 time)
+        means3D_final, scales_final, rotations_final, opacity_final, shs_final, dx = pc._deformation(means3D, scales, rotations, opacity, shs, time)
     else:
         raise NotImplementedError
 
@@ -126,14 +121,17 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         scales = scales_final,
         rotations = rotations_final,
         cov3D_precomp = cov3D_precomp)
+
     # time4 = get_time()
     # print("rasterization:",time4-time3)
-    # breakpoint()
+    # breakpoint()  
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.
+
     return {"render": rendered_image,
             "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,
             "radii": radii,
-            "depth":depth}
+            "depth":depth,
+            "dx":dx}
 

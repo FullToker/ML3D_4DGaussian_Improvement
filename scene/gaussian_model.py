@@ -271,6 +271,9 @@ class GaussianModel:
         optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
         self._opacity = optimizable_tensors["opacity"]
 
+    def reset_deformation(self):
+        self._deformation_accum = torch.zeros((self.get_xyz.shape[0],3),device="cuda")
+
     def load_ply(self, path):
         plydata = PlyData.read(path)
 
@@ -364,6 +367,65 @@ class GaussianModel:
         self.denom = self.denom[valid_points_mask]
         self.max_radii2D = self.max_radii2D[valid_points_mask]
 
+    def prune(self, max_grad, min_opacity, extent, max_screen_size, opt=None):
+        prune_mask = (self.get_opacity < min_opacity).squeeze()
+        N_before = self.get_xyz.shape[0]
+        self.prune_points(prune_mask)
+        N_after = self.get_xyz.shape[0]
+        print(f"[opacity_pruning]: {N_before} -> {N_after} (pruned {N_before-N_after})")
+
+        used_motion = opt is not None and hasattr(opt, 'use_motion_pruning') and opt.use_motion_pruning
+        used_transform = opt is not None and hasattr(opt, 'use_low_transform_pruning') and opt.use_low_transform_pruning
+
+        # transform pruning: use actual deformation
+        if used_transform:
+            with torch.no_grad():
+                means3D = self._xyz
+                scales = self._scaling
+                rotations = self._rotation
+                opacity = self._opacity
+                time = torch.zeros(means3D.shape[0], 1, device=means3D.device)
+                shs = torch.zeros(means3D.shape[0], 3, 1, device=means3D.device)
+                means3D_deform, _, _, _, _, _ = self._deformation(
+                    means3D, 
+                    scales, 
+                    rotations, 
+                    opacity, 
+                    shs, 
+                    time
+                )
+                displacement = torch.norm(means3D_deform - means3D, dim=-1)
+                low_transform_mask = displacement < getattr(opt, 'low_transform_threshold', 0.01)
+                N_before = self.get_xyz.shape[0]
+                self.prune_points(low_transform_mask)
+                N_after = self.get_xyz.shape[0]
+                print(f"[low_transform_pruning]: {N_before} -> {N_after} (pruned {N_before-N_after})")
+
+        # motion pruning: use accumulated motion
+        if used_motion:
+            motion_magnitude = self._deformation_accum.norm(dim=-1)
+            if motion_magnitude.max() < 0.01:
+                print("motion_magnitude is too small, skip motion pruning")
+            else:
+                low_motion_mask = motion_magnitude < getattr(opt, 'low_motion_threshold', 0.01)
+                N_before = self.get_xyz.shape[0]
+                self.prune_points(low_motion_mask)
+                N_after = self.get_xyz.shape[0]
+                print(f"[low_motion_pruning]: {N_before} -> {N_after} (pruned {N_before-N_after})")
+
+        if max_screen_size:
+            big_points_vs = self.max_radii2D > max_screen_size
+            big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
+            N_before = self.get_xyz.shape[0]
+            self.prune_points(big_points_vs)
+            N_after = self.get_xyz.shape[0]
+            print(f"[big_points_vs_pruning]: {N_before} -> {N_after} (pruned {N_before-N_after})")
+            self.prune_points(big_points_ws)
+            N_after_after = self.get_xyz.shape[0]
+            print(f"[big_points_ws_pruning]: {N_after} -> {N_after_after} (pruned {N_after-N_after_after})")
+
+        torch.cuda.empty_cache()
+
     def cat_tensors_to_optimizer(self, tensors_dict):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
@@ -408,9 +470,15 @@ class GaussianModel:
         
         self._deformation_table = torch.cat([self._deformation_table,new_deformation_table],-1)
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
-        self._deformation_accum = torch.zeros((self.get_xyz.shape[0], 3), device="cuda")
+
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
+
+        old_num = self._deformation_accum.shape[0]
+        new_num = self.get_xyz.shape[0] - old_num
+        if new_num > 0:
+            new_deformation_accum = torch.zeros((new_num, 3), device="cuda")
+            self._deformation_accum = torch.cat([self._deformation_accum, new_deformation_accum], dim=0)
 
     def densify_and_split(self, grads, grad_threshold, scene_extent, N=2):
         n_init_points = self.get_xyz.shape[0]
@@ -486,18 +554,6 @@ class GaussianModel:
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_deformation_table)
         return selected_xyz, new_xyz
 
-    def prune(self, max_grad, min_opacity, extent, max_screen_size):
-        prune_mask = (self.get_opacity < min_opacity).squeeze()
-
-        if max_screen_size:
-            big_points_vs = self.max_radii2D > max_screen_size
-            big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
-            prune_mask = torch.logical_or(prune_mask, big_points_vs)
-
-            prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
-        self.prune_points(prune_mask)
-
-        torch.cuda.empty_cache()
     def densify(self, max_grad, min_opacity, extent, max_screen_size, density_threshold, displacement_scale, model_path=None, iteration=None, stage=None):
         grads = self.xyz_gradient_accum / self.denom
         grads[grads.isnan()] = 0.0

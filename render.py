@@ -25,6 +25,8 @@ from gaussian_renderer import GaussianModel
 from time import time
 import threading
 import concurrent.futures
+from utils.image_utils import psnr
+from utils.loss_utils import l1_loss
 def multithread_write(image_list, path):
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=None)
     def write_image(image, count, path):
@@ -75,6 +77,27 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
 
     
     imageio.mimwrite(os.path.join(model_path, name, "ours_{}".format(iteration), 'video_rgb.mp4'), render_images, fps=30)
+    if name in ["train", "test"]:
+        psnr_total, l1_total = 0.0, 0.0
+        for i in range(len(gt_list)):
+            pred = render_list[i].unsqueeze(0).cuda()
+            gt = gt_list[i].unsqueeze(0).cuda()
+            psnr_total += psnr(pred, gt).mean().item()
+            l1_total += l1_loss(pred, gt).mean().item()
+        psnr_avg = psnr_total / len(gt_list)
+        l1_avg = l1_total / len(gt_list)
+        with open(os.path.join(model_path, "report.txt"), "a") as f:
+            f.write(f"Render {name} PSNR: {psnr_avg:.2f} L1: {l1_avg:.4f}\n")
+        with open(os.path.join(model_path, "report.txt"), "a") as f:
+            f.write(f"Render {name} FPS: {(len(views)-1)/(time2-time1):.2f}\n")
+        with open(os.path.join(model_path, "report.txt"), "a") as f:
+            f.write(f"Config file: {args.configs}\n")
+    if name == "video":
+        with open(os.path.join(model_path, "report.txt"), "a") as f:
+            f.write(f"Render {name} FPS: {(len(views)-1)/(time2-time1):.2f}\n")
+        with open(os.path.join(model_path, "report.txt"), "a") as f:
+            f.write(f"Config file: {args.configs}\n")
+
 def render_sets(dataset : ModelParams, hyperparam, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, skip_video: bool):
     with torch.no_grad():
         gaussians = GaussianModel(dataset.sh_degree, hyperparam)
