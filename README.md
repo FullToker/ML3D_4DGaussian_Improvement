@@ -4,18 +4,21 @@ ML3D 25SS Project, about 4D Gaussian and its improvements
 [Source Code](https://github.com/hustvl/4DGaussians)
 
 ## Datasets
-1. [DynamicNeRF](https://github.com/gaochen315/DynamicNeRF): Dynamic View Synthesis from Dynamic Monocular Video
-2. [ZJU-MoCap](https://chingswy.github.io/Dataset-Demo/) Dataset (no depth information)
-3. [TUM RGB-D Dynamic Scenes Dataset](https://cvg.cit.tum.de/data/datasets/rgbd-dataset)
+[ZJU-MoCap](https://chingswy.github.io/Dataset-Demo/) Dataset
 
 ## Modifications
-### Redundant Gaussian Pruning
-1. Track deformation magnitude over time
-2. Prune low-opacity and low-motion Gaussians, resample Gaussians in high-error areas
-3. Add a dynamic density control module to the training loop
+### Intelligent Dynamic Point Cloud Pruning
+1. Analyze motion characteristics of each Gaussian point
+2. Implement Motion-aware Pruning
+3. Implement Transformation-aware Pruning
 
-### Temporal Smoothness Regularization
+### Temporal Smoothness Regularization (or something) 
 
 1. Modify the loss function in the deformation MLP
 2. Add finite-difference loss between Gaussians at adjacent frames
 3. Cluster similar Gaussians by features to encourage motion consistency
+
+### Supersampling Render Function for Anti-Aliasing
+
+1. Increases Render Resolution
+2. Downsamples with Averaging
