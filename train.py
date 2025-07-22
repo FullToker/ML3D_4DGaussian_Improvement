@@ -31,6 +31,42 @@ from utils.scene_utils import render_training_image
 from time import time
 import copy
 
+### beginn of render function (all changes are in this block)
+import gaussian_renderer  
+
+real_render = gaussian_renderer.render
+
+# Define wrapper
+def render_supersampled(viewpoint_camera, pc, pipe, bg_color,
+                        scaling_modifier=1.0, override_color=None,
+                        stage="fine", cam_type=None, supersample_factor=2):
+    old_h = viewpoint_camera.image_height
+    old_w = viewpoint_camera.image_width
+
+    viewpoint_camera.image_height = int(old_h * supersample_factor)
+    viewpoint_camera.image_width = int(old_w * supersample_factor)
+
+    result = real_render(viewpoint_camera, pc, pipe, bg_color,
+                         scaling_modifier, override_color, stage, cam_type)
+
+    # Downsample by averaging 2x2 blocks
+    rendered = result["render"]
+    rendered = rendered.reshape(
+        old_h, supersample_factor,
+        old_w, supersample_factor,
+        3
+    ).mean(dim=(1, 3))
+    result["render"] = rendered
+
+    # Restore original camera resolution
+    viewpoint_camera.image_height = old_h
+    viewpoint_camera.image_width = old_w
+
+    return result
+
+gaussian_renderer.render = render_supersampled
+### end of render function 
+
 to8b = lambda x : (255*np.clip(x.cpu().numpy(),0,1)).astype(np.uint8)
 
 try:
