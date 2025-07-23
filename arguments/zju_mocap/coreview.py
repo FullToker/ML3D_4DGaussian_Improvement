@@ -1,4 +1,4 @@
-_base_ = './dnerf_default.py'
+_base_ = './zju_mocap_default.py'
 
 ModelHiddenParams = dict(
     kplanes_config = {
