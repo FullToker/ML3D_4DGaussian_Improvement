@@ -360,11 +360,11 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         t_next = (current_time + delta_t).repeat(num_points, 1)
 
         # Deformation between adjacent frames
-        means_prev, scales_prev, rot_prev, opacity_prev, _ = gaussians._deformation.forward_dynamic(
+        means_prev, scales_prev, rot_prev, opacity_prev, _ , _ = gaussians._deformation.forward_dynamic(
             points, scales, rots, opacity, shs, t_prev)
-        means_cur, scales_cur, rot_cur, opacity_cur, _ = gaussians._deformation.forward_dynamic(
+        means_cur, scales_cur, rot_cur, opacity_cur, _ , _ = gaussians._deformation.forward_dynamic(
             points, scales, rots, opacity, shs, t_cur)
-        means_next, scales_next, rot_next, opacity_next, _ = gaussians._deformation.forward_dynamic(
+        means_next, scales_next, rot_next, opacity_next, _ , _ = gaussians._deformation.forward_dynamic(
             points, scales, rots, opacity, shs, t_next)
 
         # First-order difference: inter-frame translational velocity
