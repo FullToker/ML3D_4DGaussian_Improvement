@@ -31,6 +31,42 @@ from utils.scene_utils import render_training_image
 from time import time
 import copy
 
+### beginn of render function (all changes are in this block)
+import gaussian_renderer  
+
+real_render = gaussian_renderer.render
+
+# Define wrapper
+def render_supersampled(viewpoint_camera, pc, pipe, bg_color,
+                        scaling_modifier=1.0, override_color=None,
+                        stage="fine", cam_type=None, supersample_factor=2):
+    old_h = viewpoint_camera.image_height
+    old_w = viewpoint_camera.image_width
+
+    viewpoint_camera.image_height = int(old_h * supersample_factor)
+    viewpoint_camera.image_width = int(old_w * supersample_factor)
+
+    result = real_render(viewpoint_camera, pc, pipe, bg_color,
+                         scaling_modifier, override_color, stage, cam_type)
+
+    # Downsample by averaging 2x2 blocks
+    rendered = result["render"]
+    rendered = rendered.reshape(
+        old_h, supersample_factor,
+        old_w, supersample_factor,
+        3
+    ).mean(dim=(1, 3))
+    result["render"] = rendered
+
+    # Restore original camera resolution
+    viewpoint_camera.image_height = old_h
+    viewpoint_camera.image_width = old_w
+
+    return result
+
+gaussian_renderer.render = render_supersampled
+### end of render function 
+
 to8b = lambda x : (255*np.clip(x.cpu().numpy(),0,1)).astype(np.uint8)
 
 try:
@@ -177,9 +213,13 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         radii_list = []
         visibility_filter_list = []
         viewspace_point_tensor_list = []
+        dx_list = []
         for viewpoint_cam in viewpoint_cams:
             render_pkg = render(viewpoint_cam, gaussians, pipe, background, stage=stage,cam_type=scene.dataset_type)
-            image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
+            # 累加deformation offset
+            if "dx" in render_pkg:
+                gaussians._deformation_accum += render_pkg["dx"].detach()
+            image, viewspace_point_tensor, visibility_filter, radii, dx = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"], render_pkg["dx"].detach()
             images.append(image.unsqueeze(0))
             if scene.dataset_type!="PanopticSports":
                 gt_image = viewpoint_cam.original_image.cuda()
@@ -190,7 +230,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             radii_list.append(radii.unsqueeze(0))
             visibility_filter_list.append(visibility_filter.unsqueeze(0))
             viewspace_point_tensor_list.append(viewspace_point_tensor)
-        
+            dx_list.append(dx.unsqueeze(0))
 
         radii = torch.cat(radii_list,0).max(dim=0).values
         visibility_filter = torch.cat(visibility_filter_list).any(dim=0)
@@ -405,10 +445,10 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
                     
                     gaussians.densify(densify_threshold, opacity_threshold, scene.cameras_extent, size_threshold, 5, 5, scene.model_path, iteration, stage)
-                if  iteration > opt.pruning_from_iter and iteration % opt.pruning_interval == 0 and gaussians.get_xyz.shape[0]>200000:
-                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
 
-                    gaussians.prune(densify_threshold, opacity_threshold, scene.cameras_extent, size_threshold)
+                if  iteration > opt.pruning_from_iter and iteration % opt.pruning_interval == 0 and gaussians.get_xyz.shape[0]>10000:
+                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+                    gaussians.prune(densify_threshold, opacity_threshold, scene.cameras_extent, size_threshold, opt=opt)
                     
                 # if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0 :
                 if iteration % opt.densification_interval == 0 and gaussians.get_xyz.shape[0]<360000 and opt.add_point:
@@ -417,6 +457,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
                 if iteration % opt.opacity_reset_interval == 0:
                     print("reset opacity")
                     gaussians.reset_opacity()
+                    gaussians.reset_deformation()
                     
             
 

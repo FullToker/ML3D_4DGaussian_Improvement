@@ -105,6 +105,7 @@ class Deformation(nn.Module):
         # breakpoint()
         if self.args.no_dx:
             pts = rays_pts_emb[:,:3]
+            dx = torch.zeros_like(pts)
         else:
             dx = self.pos_deform(hidden)
             pts = torch.zeros_like(rays_pts_emb[:,:3])
@@ -145,7 +146,7 @@ class Deformation(nn.Module):
             # breakpoint()
             shs = shs_emb*mask.unsqueeze(-1) + dshs
 
-        return pts, scales, rotations, opacity, shs
+        return pts, scales, rotations, opacity, shs, dx
     def get_mlp_parameters(self):
         parameter_list = []
         for name, param in self.named_parameters():
@@ -202,14 +203,14 @@ class deform_network(nn.Module):
         rotations_emb = poc_fre(rotations,self.rotation_scaling_poc)
         # time_emb = poc_fre(times_sel, self.time_poc)
         # times_feature = self.timenet(time_emb)
-        means3D, scales, rotations, opacity, shs = self.deformation_net( point_emb,
+        means3D, scales, rotations, opacity, shs, dx = self.deformation_net( point_emb,
                                                   scales_emb,
                                                 rotations_emb,
                                                 opacity,
                                                 shs,
                                                 None,
                                                 times_sel)
-        return means3D, scales, rotations, opacity, shs
+        return means3D, scales, rotations, opacity, shs, dx
     def get_mlp_parameters(self):
         return self.deformation_net.get_mlp_parameters() + list(self.timenet.parameters())
     def get_grid_parameters(self):

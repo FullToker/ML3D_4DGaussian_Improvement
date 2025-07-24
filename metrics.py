@@ -111,6 +111,7 @@ def evaluate(model_paths):
             
             print("Unable to compute metrics for model", scene_dir)
             raise e
+    return full_dict
 
 if __name__ == "__main__":
     device = torch.device("cuda:0")
@@ -118,6 +119,29 @@ if __name__ == "__main__":
 
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
-    parser.add_argument('--model_paths', '-m', required=True, nargs="+", type=str, default=[])
+    parser.add_argument('--model_paths', '-m', nargs="+", type=str, default=[], help="List of model output directories to evaluate")
+    parser.add_argument('--all', action='store_true', help="Evaluate all scenes in output/dnerf/")
     args = parser.parse_args()
-    evaluate(args.model_paths)
+
+    def get_all_model_paths():
+        base_dir = Path("output/dnerf")
+        if not base_dir.exists():
+            print("output/dnerf/ not found!")
+            return []
+        # only collect the directories with test/ subdirectory
+        return [str(d) for d in base_dir.iterdir() if (d / "test").exists()]
+
+    if args.all:
+        model_paths = get_all_model_paths()
+        if not model_paths:
+            print("No valid model directories found in output/dnerf/")
+            exit(1)
+        print(f"Found {len(model_paths)} model directories.")
+        
+        full_dict = evaluate(model_paths)
+
+    else:
+        if not args.model_paths:
+            print("Please provide --model_paths or use --all.")
+            exit(1)
+        evaluate(args.model_paths)

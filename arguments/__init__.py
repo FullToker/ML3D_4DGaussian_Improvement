@@ -155,6 +155,15 @@ class OptimizationParams(ParamGroup):
         self.opacity_threshold_fine_after = 0.005
         self.batch_size=1
         self.add_point=False
+        
+        # pruning parameters
+        self.use_motion_pruning = False
+        self.use_low_transform_pruning = False
+        self.motion_prune_threshold = 0.01
+        self.low_transform_threshold = 0.01
+        self.min_point_number = 10000
+        self.supplement_point_number = 5000
+
         super().__init__(parser, "Optimization Parameters")
 
 def get_combined_args(parser : ArgumentParser):

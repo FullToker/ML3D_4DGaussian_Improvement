@@ -9,3 +9,6 @@ screenshots
 data/
 data
 submodules/
+*.so
+__pycache__/
+*.pyc
