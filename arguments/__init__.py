@@ -103,7 +103,15 @@ class ModelHiddenParams(ParamGroup):
         self.static_mlp=False # useless
         self.apply_rotation=False # useless
 
-        
+        # regularization parameters
+        self.lambda_smooth1 = 0.0
+        self.lambda_smooth2 = 0.0
+        self.delta_t = 1.0 / 30.0
+
+        self.lambda_fd_means = 0.0
+        self.lambda_fd_scales = 0.0
+        self.lambda_fd_rot = 0.0
+
         super().__init__(parser, "ModelHiddenParams")
         
 class OptimizationParams(ParamGroup):

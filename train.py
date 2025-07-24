@@ -209,13 +209,147 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             # tv_loss = 0
             tv_loss = gaussians.compute_regulation(hyper.time_smoothness_weight, hyper.l1_time_planes, hyper.plane_tv_weight)
             loss += tv_loss
+
+
+        # Modification2.1: add temporal smoothness loss
+        # t_cur_scalar = torch.tensor([v.time for v in viewpoint_cams], device="cuda").mean()
+        # delta_t = hyper.delta_t
+        #
+        # t_prev_scalar = t_cur_scalar - delta_t
+        # t_next_scalar = t_cur_scalar + delta_t
+        #
+        # points = gaussians.get_xyz
+        # scales = gaussians.get_scaling
+        # rots = gaussians.get_rotation
+        # opacity = gaussians.get_opacity
+        # shs = gaussians.get_features
+        #
+        # num_points = points.shape[0]
+        #
+        #
+        # t_prev_all = t_prev_scalar.expand(num_points, 1)
+        # t_cur_all = t_cur_scalar.expand(num_points, 1)
+        # t_next_all = t_next_scalar.expand(num_points, 1)
+        #
+        # means_prev, _, _, _, _ = gaussians._deformation.forward_dynamic(points, scales, rots, opacity, shs, t_prev_all)
+        # means_cur, _, _, _, _ = gaussians._deformation.forward_dynamic(points, scales, rots, opacity, shs, t_cur_all)
+        # means_next, _, _, _, _ = gaussians._deformation.forward_dynamic(points, scales, rots, opacity, shs, t_next_all)
+        #
+        # L_smooth_1st = ((means_next - means_cur) ** 2).mean()
+        # L_smooth_2nd = ((means_next - 2 * means_cur + means_prev) ** 2).mean()
+        #
+        # lambda_smooth1 = hyper.lambda_smooth1
+        # lambda_smooth2 = hyper.lambda_smooth2
+        # loss += lambda_smooth1 * L_smooth_1st + lambda_smooth2 * L_smooth_2nd
+        # End Modification2.1
+
         if opt.lambda_dssim != 0:
             ssim_loss = ssim(image_tensor,gt_image_tensor)
             loss += opt.lambda_dssim * (1.0-ssim_loss)
+
+
+        # Modification2.2: finite-difference loss
+
+        # points = gaussians.get_xyz
+        # scales = gaussians.get_scaling
+        # rots = gaussians.get_rotation
+        # opacity = gaussians.get_opacity
+        # shs = gaussians.get_features
+        #
+        # current_time = torch.tensor(viewpoint_cams[0].time, device="cuda")
+        #
+        # #
+        # num_points = points.shape[0]
+        # t_cur = current_time.repeat(num_points, 1)
+        # delta_t = hyper.delta_t
+        # t_prev = (current_time - delta_t).repeat(num_points, 1)
+        # t_next = (current_time + delta_t).repeat(num_points, 1)
+        #
+        # #
+        # means_cur, scales_cur, rot_cur, opacity_cur, _ = gaussians._deformation.forward_dynamic(
+        #     points, scales, rots, opacity, shs, t_cur
+        # )
+        #
+        # means_prev, scales_prev, rot_prev, opacity_prev, _ = gaussians._deformation.forward_dynamic(
+        #     points, scales, rots, opacity, shs, t_prev
+        # )
+        #
+        # means_next, scales_next, rot_next, opacity_next, _ = gaussians._deformation.forward_dynamic(
+        #     points, scales, rots, opacity, shs, t_next
+        # )
+        #
+        # #
+        # fd_means = ((means_next - means_cur) ** 2).mean()
+        # fd_scales = ((scales_next - scales_cur) ** 2).mean()
+        # fd_rot = ((rot_next - rot_cur) ** 2).mean()
+        #
+        # #
+        # lambda_fd_means = hyper.lambda_fd_means
+        # lambda_fd_scales = hyper.lambda_fd_scales
+        # lambda_fd_rot = hyper.lambda_fd_rot
+        #
+        # loss += (
+        #         lambda_fd_means * fd_means +
+        #         lambda_fd_scales * fd_scales +
+        #         lambda_fd_rot * fd_rot
+        # )
+
+        # End Modification2.2
+
         # if opt.lambda_lpips !=0:
         #     lpipsloss = lpips_loss(image_tensor,gt_image_tensor,lpips_model)
         #     loss += opt.lambda_lpips * lpipsloss
-        
+
+        # Modification2 combination
+        #
+        points = gaussians.get_xyz  # (N, 3)
+        scales = gaussians.get_scaling  # (N, 3)
+        rots = gaussians.get_rotation  # (N, 4)
+        opacity = gaussians.get_opacity  # (N, 1)
+        shs = gaussians.get_features  # (N, 48)
+
+        num_points = points.shape[0]
+
+        current_time = torch.tensor(viewpoint_cams[0].time, device="cuda")
+
+        delta_t = hyper.delta_t
+
+        # t-Δt, t, t+Δt
+        t_cur = current_time.repeat(num_points, 1)
+        t_prev = (current_time - delta_t).repeat(num_points, 1)
+        t_next = (current_time + delta_t).repeat(num_points, 1)
+
+        # Deformation between adjacent frames
+        means_prev, scales_prev, rot_prev, opacity_prev, _ = gaussians._deformation.forward_dynamic(
+            points, scales, rots, opacity, shs, t_prev)
+        means_cur, scales_cur, rot_cur, opacity_cur, _ = gaussians._deformation.forward_dynamic(
+            points, scales, rots, opacity, shs, t_cur)
+        means_next, scales_next, rot_next, opacity_next, _ = gaussians._deformation.forward_dynamic(
+            points, scales, rots, opacity, shs, t_next)
+
+        # First-order difference: inter-frame translational velocity
+        L_smooth_1st = ((means_next - means_cur) ** 2).mean()
+
+        # Second-order difference: acceleration between adjacent frames ( reduce jitter)
+        L_smooth_2nd = ((means_next - 2 * means_cur + means_prev) ** 2).mean()
+
+        loss += (
+                hyper.lambda_smooth1 * L_smooth_1st +
+                hyper.lambda_smooth2 * L_smooth_2nd
+        )
+
+        # Finite-Difference Loss between adjacent frames
+        fd_means = ((means_next - means_cur) ** 2).mean()  # position
+        fd_scales = ((scales_next - scales_cur) ** 2).mean()  # scaling
+        fd_rot = ((rot_next - rot_cur) ** 2).mean()  # rotation
+
+        loss += (
+                hyper.lambda_fd_means * fd_means +
+                hyper.lambda_fd_scales * fd_scales +
+                hyper.lambda_fd_rot * fd_rot
+        )
+        # End Modification2 combination
+
         loss.backward()
         if torch.isnan(loss).any():
             print("loss is nan,end training, reexecv program now.")
