@@ -23,7 +23,7 @@ ML3D 25SS Project, about 4D Gaussian and its improvements
 2. Downsamples with Averaging
 
 ## How To Train
-This project uses the same command-line interfaces as the original, but with different configuration parameters, e.g.,
+This project uses the same command-line interfaces as the original, but with different configuration parameters "combi_bouncingballs", e.g.,
 
 Training on the synthetic D-NeRF dataset:
 
