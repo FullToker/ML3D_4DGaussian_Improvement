@@ -342,11 +342,11 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
 
         # Modification2 combination
         #
-        points = gaussians.get_xyz  # (N, 3)
-        scales = gaussians.get_scaling  # (N, 3)
-        rots = gaussians.get_rotation  # (N, 4)
-        opacity = gaussians.get_opacity  # (N, 1)
-        shs = gaussians.get_features  # (N, 48)
+        points = gaussians.get_xyz
+        scales = gaussians.get_scaling
+        rots = gaussians.get_rotation
+        opacity = gaussians.get_opacity
+        shs = gaussians.get_features
 
         num_points = points.shape[0]
 
@@ -367,10 +367,10 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         means_next, scales_next, rot_next, opacity_next, _ , _ = gaussians._deformation.forward_dynamic(
             points, scales, rots, opacity, shs, t_next)
 
-        # First-order difference: inter-frame translational velocity
+        # First-order difference
         L_smooth_1st = ((means_next - means_cur) ** 2).mean()
 
-        # Second-order difference: acceleration between adjacent frames ( reduce jitter)
+        # Second-order difference
         L_smooth_2nd = ((means_next - 2 * means_cur + means_prev) ** 2).mean()
 
         loss += (
@@ -378,7 +378,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
                 hyper.lambda_smooth2 * L_smooth_2nd
         )
 
-        # Finite-Difference Loss between adjacent frames
+        # Finite-Difference Los
         fd_means = ((means_next - means_cur) ** 2).mean()  # position
         fd_scales = ((scales_next - scales_cur) ** 2).mean()  # scaling
         fd_rot = ((rot_next - rot_cur) ** 2).mean()  # rotation
